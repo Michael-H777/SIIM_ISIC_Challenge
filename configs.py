@@ -1,11 +1,11 @@
 
-pre_process = False
+pre_process = True
 
 
 # data processing configs 
-val_size = 50
-train_size = 1200
-augment_times = 3
+val_size = 0
+train_size = 0
+augment_times = 0
 
 input_file_name = ''
 target_file_name = ''
