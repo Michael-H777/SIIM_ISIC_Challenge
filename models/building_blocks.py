@@ -16,6 +16,8 @@ def make_activation(function_type):
 
 
 def init_layers(layer):
+    # https://github.com/SaoYan/DnCNN-PyTorch/blob/master/utils.py
+    
     layer_name = layer.__class__.__name__ 
     if layer_name.find('Conv') != -1: 
         torch.nn.init.kaiming_normal_(layer.weight.data, mode='fan_in')
