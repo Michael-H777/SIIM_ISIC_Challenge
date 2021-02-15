@@ -31,58 +31,11 @@ def init_layers(layer):
 class ChannelAttention(torch.nn.Module): 
     
     # https://openaccess.thecvf.com/content_ECCV_2018/papers/Yulun_Zhang_Image_Super-Resolution_Using_ECCV_2018_paper.pdf
-    # with revision 
-    
-    def __init__(self, in_channels):
-        super(ChannelAttention, self).__init__() 
-        self.Attention_Pool = torch.nn.AdaptiveAvgPool2d(1)
-        self.Attention_Conv = torch.nn.Conv2d(in_channels=in_channels, out_channels=in_channels, 
-                                              kernel_size=1, padding=0)
-        self.Attention_Activation = torch.nn.Sigmoid()
-        self.init_layers()
-        
-    def init_layers(self): 
-        torch.nn.init.kaiming_normal_(self.Attention_Conv.weight.data, mode='fan_in')
-        
-    def forward(self, input_data):
-        attention = self.Attention_Pool(input_data)
-        attention = self.Attention_Conv(attention)
-        attention = self.Attention_Activation(attention)
-        return input_data * attention
+    pass 
 
 
 class ConvLayer(torch.nn.Sequential): 
-    
-    def __init__(self, *, in_channels, out_channels, attention=False, kernel_size=5, 
-                 dilation=1, dropout=False, use_bn=True, activation='gelu'):
-        super(ConvLayer, self).__init__()
-        
-        # calculate padding after dilation 
-        dilated_space = (kernel_size // 2) * (dilation-1)
-        dilated_kernel = kernel_size + dilated_space*2
-        padding = (dilated_kernel - 1) // 2
-        # Conv is must have; but BN, dropout, activation are dependent on model architecture, 
-        # which is controlled by changing input param when buildind said model 
-        self.add_module('Conv', torch.nn.Conv2d(in_channels=in_channels, out_channels=out_channels, 
-                                                kernel_size=kernel_size, stride=1, 
-                                                dilation=dilation, padding=padding, padding_mode='reflect'))
-        self.add_module('BatchNorm', torch.nn.BatchNorm2d(num_features=out_channels)) if use_bn else None
-        self.add_module('Dropout', torch.nn.Dropout(dropout, inplace=True)) if isinstance(dropout, float) else None 
-        self.init_layers()
-        self.add_module('Attention', ChannelAttention(in_channels=out_channels)) if attention else None
-        self.add_module('Activation', make_activation(activation)) if isinstance(activation, str) else None
-
-    def init_layers(self): 
-        for module in self: 
-            module.apply(init_layers)
-            
-    def forward(self, input_data):
-        for name, module in zip(self._modules, self):
-            if 'Attention' not in name:
-                input_data = module(input_data)
-            else:
-                input_data = module(input_data) + input_data
-        return input_data
+    pass
 
 
 class DenseBlock(torch.nn.Sequential): 
