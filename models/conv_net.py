@@ -17,7 +17,7 @@ class conv_net(base_model):
             model.add_module(f'Conv Layer {number}', ConvLayer(in_channels=in_c, out_channels=out_c, **kwargs))
         # make loss 
         self.model = torch.nn.DataParallel(model).cuda()
-        self.optimizer = optimizer(self.model.params())
+        self.optimizer = optimizer(self.model.parameters())
         self.check_attrs()
 
 
@@ -32,7 +32,7 @@ class d_conv_net(base_model):
         model.add_module('DenseBlock', DenseBlock(in_channels=channel_growth, out_channels=out_channels, 
                                                   channel_growth=channel_growth, block_layers=block_layers, **kwargs))
         # make loss 
-        self.model = torch.nn.DataParallel(model).cuda
-        self.optimizer = optimizer(self.model.params())
+        self.model = torch.nn.DataParallel(model).cuda()
+        self.optimizer = optimizer(self.model.parameters())
         self.check_attrs()
 

@@ -49,7 +49,7 @@ class ChannelAttention(torch.nn.Module):
 class ConvLayer(torch.nn.Sequential): 
     
     def __init__(self, *, in_channels, out_channels, kernel_size=5, dilation=1, 
-                 padding_mode='reflect', use_bn=True, dropout=False, activation='gelu'):
+                 padding_mode='reflect', group_norm=True, dropout=False, activation='gelu'):
         super(ConvLayer, self).__init__()
         
         # calculate padding after dilation 
@@ -59,13 +59,13 @@ class ConvLayer(torch.nn.Sequential):
         # Conv is must have; but BN, dropout, activation are dependent on model architecture, 
         # which is controlled by changing input param when buildind said model 
         self.add_module('Conv', torch.nn.Conv2d(in_channels=in_channels, out_channels=out_channels, 
-                                                kernel_size=kernel_size, stride=1, 
+                                                kernel_size=kernel_size, stride=1, bias=False, 
                                                 dilation=dilation, padding=padding, padding_mode=padding_mode))
         # groupnorm should help with small batch size and accumulating gradient 
-        self.add_module('BatchNorm', torch.nn.BatchNorm2d(num_features=out_channels) \
-                                     if use_bn else \
-                                    # as the original groupnorm paper show, group of 16 per shows best performance 
-                                     torch.nn.GroupNorm(num_groups=out_channels//16, num_channels=out_channels))
+        # as the original groupnorm paper show, group of 16 per shows best performance 
+        self.add_module('BatchNorm', torch.nn.GroupNorm(num_groups=out_channels//16, num_channels=out_channels) \
+                                     if group_norm and out_channels > 16 else \
+                                     torch.nn.BatchNorm2d(num_features=out_channels))
         self.add_module('Dropout', torch.nn.Dropout(dropout, inplace=True)) if isinstance(dropout, float) else None 
         self.init_layers()
         self.add_module('Activation', make_activation(activation)) if isinstance(activation, str) else None
@@ -91,11 +91,11 @@ class DenseBlock(torch.nn.Module):
         block_layers -= block_attention*1
         for layer_number in range(block_layers):
             not_bottle_neck = layer_number != block_layers-1
-            out_channels = layer_channels[-1] + channel_growth if not_bottle_neck else out_channels 
+            layer_out_channels = layer_channels[-1] + channel_growth if not_bottle_neck else out_channels 
             # make layer, set to bottleneck if last layer 
-            layer = ConvLayer(in_channels=sum(layer_channels), out_channels=out_channels, **kwargs)
-            self.conv.add_module(f'Dense Block Layer {layer_number}{"" if not_bottle_neck else " bottleneck"}', layer)
-            layer_channels.append(out_channels)
+            layer = ConvLayer(in_channels=sum(layer_channels), out_channels=layer_out_channels, **kwargs)
+            self.conv.add_module(f'Dense Block Layer {layer_number+1}{"" if not_bottle_neck else " bottleneck"}', layer)
+            layer_channels.append(layer_out_channels)
         self.attention = ChannelAttention(channels=out_channels) if block_attention else None
         
     def forward(self, input_data): 
@@ -134,10 +134,10 @@ class UNetLayer(torch.nn.Module):
         self.submodule = submodule 
         
         self.up = torch.nn.Sequential(
-            DenseBlock(in_channels=center_channels, out_channels=channels, **kwargs), 
+            DenseBlock(in_channels=center_channels*2, out_channels=channels, **kwargs), 
             up_method
         )
-            
+        
     def forward(self, input_data):
         skip_connection = self.down(input_data)
         lower_layer = self.submodule(skip_connection)
