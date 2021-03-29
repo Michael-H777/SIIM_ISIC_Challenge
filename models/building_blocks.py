@@ -1,14 +1,26 @@
 import torch 
 import numpy as np 
 
+from loss.ssim import SSIM
+from loss.perceptual import * 
+
+
+loss_types = {'vgg': VGG, 
+              'l1': torch.nn.L1Loss, 
+              'l2': torch.nn.MSELoss, 
+              'ssim': SSIM, 
+              'BCE': torch.nn.BCELoss, 
+              'BCElogits': torch.nn.BCEWithLogitsLoss,
+              'cross_entropy': torch.nn.CrossEntropyLoss}
+
 
 def make_activation(function_type):
     if function_type == 'relu': 
-        return torch.nn.ReLU(inplace=True)
+        return torch.nn.ReLU(inplace=False)
     elif function_type == 'leaky_relu':
-        return torch.nn.LeakyReLU(inplace=True)
+        return torch.nn.LeakyReLU(inplace=False)
     elif function_type == 'elu':
-        return torch.nn.ELU(inplace=True)
+        return torch.nn.ELU(inplace=False)
     elif function_type == 'gelu':
         return torch.nn.GELU()
     else:
@@ -32,8 +44,11 @@ class ChannelAttention(torch.nn.Module):
     
     def __init__(self, channels, reduction=2):
         super(ChannelAttention, self).__init__()
-        self.Attention_Pool = torch.nn.AdaptiveAvgPool2d(1)
-        self.Attention_Conv = torch.nn.Sequential(
+        
+        self.attention = torch.nn.Sequential(
+            ConvLayer(in_channels=channels, out_channels=channels), 
+            ConvLayer(in_channels=channels, out_channels=channels, activation=None), 
+            torch.nn.AdaptiveAvgPool2d(1), 
             torch.nn.Conv2d(channels, channels//reduction, kernel_size=1, padding=0, bias=True), 
             torch.nn.GELU(),
             torch.nn.Conv2d(channels//reduction, channels, kernel_size=1, padding=0, bias=True), 
@@ -41,9 +56,8 @@ class ChannelAttention(torch.nn.Module):
         )
         
     def forward(self, input_data):
-        attention = self.Attention_Pool(input_data)
-        attention = self.Attention_Conv(attention)
-        return input_data * attention
+        residual = self.attention(input_data)
+        return input_data + residual
 
 
 class ConvLayer(torch.nn.Sequential): 
@@ -56,6 +70,7 @@ class ConvLayer(torch.nn.Sequential):
         dilated_space = (kernel_size // 2) * (dilation-1)
         dilated_kernel = kernel_size + dilated_space*2
         padding = (dilated_kernel - 1) // 2
+        
         # Conv is must have; but BN, dropout, activation are dependent on model architecture, 
         # which is controlled by changing input param when buildind said model 
         self.add_module('Conv', torch.nn.Conv2d(in_channels=in_channels, out_channels=out_channels, 
@@ -63,13 +78,13 @@ class ConvLayer(torch.nn.Sequential):
                                                 dilation=dilation, padding=padding, padding_mode=padding_mode))
         # groupnorm should help with small batch size and accumulating gradient 
         # as the original groupnorm paper show, group of 16 per shows best performance 
-        self.add_module('BatchNorm', torch.nn.GroupNorm(num_groups=out_channels//16, num_channels=out_channels) \
+        self.add_module('Normalize', torch.nn.GroupNorm(num_groups=out_channels//16, num_channels=out_channels) \
                                      if group_norm and out_channels > 16 else \
                                      torch.nn.BatchNorm2d(num_features=out_channels))
         self.add_module('Dropout', torch.nn.Dropout(dropout, inplace=True)) if isinstance(dropout, float) else None 
         self.init_layers()
         self.add_module('Activation', make_activation(activation)) if isinstance(activation, str) else None
-
+        
     def init_layers(self): 
         for module in self: 
             module.apply(init_layers)

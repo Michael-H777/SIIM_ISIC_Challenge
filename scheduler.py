@@ -5,20 +5,43 @@ from models.conv_net import *
 from models.pix2pix import * 
 from models.unet import * 
 
-data = torch.ones(64,1,128,128)
 
-model = d_unet(in_channels=1, out_channels=1)
 
-'''
-amplify_factor = 32 
-channel_growth = 16 
-layers =4 
-model = DenseBlock(in_channels=amplify_factor+channel_growth*layers, out_channels=amplify_factor+channel_growth*layers, 
-                               block_layers=6)
-print(model)
+parser = argparse.ArgumentParser(description='templet train file')
+parser.add_argument('--preprocess', type=bool, default=False, help='process training data using specified directory')
+parser.add_argument('--start_lr', type=float, default=1e-2, help='initial learning rate, decay to end_learning_rate with cosine annihilation')
+parser.add_argument('--end_lr', type=float, default=1e-5, help='ending learning rate')
+parser.add_argument('--max_epoch', type=int, default=50, help='maximum epoch for training')
+parser.add_argument('--epoch_samples', type=int, default=5_000, help='samples for each epochs')
+parser.add_argument('--epoch_updates', type=int, default=100, help='allowed updates for each epochs')
+parser.add_argument('--batch_size', type=int, default=8, help='batch size when training')
+parser.add_argument('--fine_tune_last', type=bool, default=False, help='fine tune last model?')
+parser.add_argument('--model_pickle_path', type=str, default='', help='pickled model path, use with scheduler')
+parser.add_argument('--log_path', type=str, default='/home/michael/ssd_cache/SMART/train_logs', help='train logs location')
+parser.add_argument('--task_type', type=str, default='Denoise', help='Task type in train_log_path folder')
+parser.add_argument('--GPU', type=str, default='0', help='specify which GPU to train on')
+parser.add_argument('--debug', type=bool, default=False, help='set to debug mode')
+options = parser.parse_args()
 
-'''
+options.DDP = False
 
-print(model.model)
-model.set_input(data)
-model.forward() 
+
+class dummy:
+    
+    def __len__(self):
+        return 20
+    
+    def __iter__(self):
+        for _ in range(10):
+            if random.randint(0, 2):
+                for _ in range(2):
+                    yield 3
+            else:
+                for _ in range(2):
+                    yield 2
+                
+
+test = dummy()
+for number in test:
+    print(number)
+    

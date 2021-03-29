@@ -31,6 +31,27 @@ class FastDataLoader(torch.utils.data.dataloader.DataLoader):
             yield next(self.iterator)
 
 
+class dummy_semi_loader:
+    
+    def __init__(self, *, options, supervised, unsupervised):
+        self.epoch_batches = options.epoch_updates
+        self.batches = int(options.epoch_samples/options.batch_size/options.epoch_updates)
+        self.supervised = supervised
+        self.unsupervised = unsupervised
+        
+    def __len__(self):
+        return len(self.unsupervised)
+    
+    def __iter__(self):
+        for _ in range(self.epoch_batches):
+            if random.randint(0, 5):
+                for _ in range(self.batches):
+                    yield next(self.unsupervised.iterator)
+            else:
+                for _ in range(self.batches):
+                    yield next(self.supervised.iterator)
+
+
 class DataSet(torch.utils.data.Dataset): 
     
     def __init__(self, *, source_file_name):
@@ -99,17 +120,15 @@ def create_h5_dataset(patches, name_header, h5file, augment_times=0, force_sourc
     return h5file
 
 
-def make_model_data(): 
-    global train_size, test_size, augment_times, force_source 
-    global raw_data_folder, processed_data_folder
-    
+def make_model_data():     
     print('loading input data')
     input_files = [tifffile.imread(f'{raw_data_folder}/{input_file_name}')]
     print('loading target data')
     target_file = tifffile.imread(f'{raw_data_folder}/{target_file_name}')
 
-    domain_min = min([np.ma.masked_equal(array, 0.0, copy=False).min() for array in input_files + [target_file]])
-    domain_max = max([np.ma.masked_equal(array, 0.0, copy=False).max() for array in input_files + [target_file]])
+    distribution_pointer = input_files + [target_file]
+    domain_min = min([np.ma.masked_equal(array, 0.0, copy=False).min() for array in distribution_pointer])
+    domain_max = max([np.ma.masked_equal(array, 0.0, copy=False).max() for array in distribution_pointer])
 
     data_scaler = DataScaler(domain_min=domain_min, 
                              domain_max=domain_max, 
@@ -122,11 +141,14 @@ def make_model_data():
     random.shuffle(all_index)
     train_index, test_index = all_index[:train_size], all_index[-test_size:]
     
-    labeled_h5 = h5py.File(f'{processed_data_folder}/labeled_train.h5', 'w')
-    
+    ################################################################
+    # labaled data processing 
+    un_labeled_h5 = h5py.File(f'{processed_data_folder}/labeled_train.h5', 'w')
     for progress, image_index in enumerate(train_index, 1):
         # have this report for each image slice processed 
         used_patch = dropped_patch = 0 
+        scaled_images = [data_scaler.to_target(array[image_index,:,:]) for array in input_files]
+        
         for row_num, row_index in enumerate(range(0, input_files[0].shape[1] - patch_size, stride)):
             
             for col_num, col_index in enumerate(range(0, input_files[0].shape[2] - patch_size, stride)):
@@ -137,21 +159,53 @@ def make_model_data():
                     dropped_patch += force_source + augment_times
                     continue 
                 # now store them 
-                patches = input_patch + [target_file[image_index , row_index:row_index+patch_size , col_index:col_index+patch_size].copy()]
-                patches = [data_scaler.to_target(array) for array in patches]
-                
-                create_h5_dataset(patches=patches, name_header=f'{image_index}_{row_num}_{col_num}', h5file=labeled_h5, 
+                patches = [array[row_index:row_index+patch_size , col_index:col_index+patch_size].copy() for array in scaled_images]
+                patches += [data_scaler.to_target(target_file[image_index , row_index:row_index+patch_size , col_index:col_index+patch_size].copy())]
+                create_h5_dataset(patches=patches, name_header=f'{image_index}_{row_num}_{col_num}', h5file=un_labeled_h5, 
                                   augment_times=augment_times, force_source=force_source)
                 used_patch += force_source + augment_times
             # exited col_num for loop
         # exited row_num for loop 
         print(f'\r[{progress:>{len(str(train_size))}}/{train_size}] processed {image_index:>4}, valid patches {used_patch}, dropped {dropped_patch}', end='', flush=True)
     # exited image_index for loop 
-    labeled_h5.close()
+    un_labeled_h5.close()
+    # labaled data processing 
+    ################################################################
     
+    '''
     ################################################################
     # implement semi-supervised learning data processing 
+    labeled_h5 = h5py.File(f'{processed_data_folder}/un_labeled_train.h5', 'w')
+    stride = 25
+    for progress, filename in enumerate(os.listdir(f'{raw_data_folder}/labeled_image'), 1):
+        labeled_image = tifffile.imread(f'{raw_data_folder}/labeled_image/{filename}')
+        image_index = int(filename[:filename.index('.')])
+        
+        used_patch = dropped_patch = 0 
+        scaled_images = [data_scaler.to_target(array[image_index,:,:]) for array in input_files]
+        for row_num, row_index in enumerate(range(0, input_files[0].shape[1] - patch_size, stride)):
+            
+            for col_num, col_index in enumerate(range(0, input_files[0].shape[2] - patch_size, stride)):
+                
+                input_patch = [array[image_index , row_index:row_index+patch_size , col_index:col_index+patch_size].copy() for array in input_files]
+                
+                if np.any([array == 0 for array in input_patch]):
+                    dropped_patch += force_source + augment_times
+                    continue 
+                # now store them 
+                patches = [array[row_index:row_index+patch_size , col_index:col_index+patch_size] for array in scaled_images]
+                patches += [labeled_image[row_index:row_index+patch_size , col_index:col_index+patch_size]]
+                
+                create_h5_dataset(patches=patches, name_header=f'{image_index}_{row_num}_{col_num}', h5file=labeled_h5, 
+                                  augment_times=7, force_source=True)
+                used_patch += force_source + augment_times
+        print(f'\r[{progress:>{len(os.listdir(f"{raw_data_folder}/labeled_image"))}}/{train_size}] ' + \
+              f'processed {image_index:>4}, valid patches {used_patch}, dropped {dropped_patch}', end='', flush=True)
+
+    labeled_h5.close()
+    # implement semi-supervised learning data processing     
     ################################################################
+    '''
     
     test_h5 = h5py.File(f'{processed_data_folder}/test_data.h5', 'w')
     for image_index in test_index: 

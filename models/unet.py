@@ -1,8 +1,8 @@
 import torch 
+from models.base_class import * 
 from models.building_blocks import *
-from models.base_class import base_model 
 
-class d_unet(torch.nn.Module):
+class d_unet(torch.nn.Sequential):
     
     def __init__(self, *, in_channels, out_channels, layers=4, channel_growth=16, interpolation='bicubic', 
                  transpose=False,  **kwargs):
@@ -26,29 +26,7 @@ class d_unet(torch.nn.Module):
             submodule = UNetLayer(channels=amplify_factor+channel_growth*multiple, submodule=submodule, channel_growth=channel_growth, 
                                   interpolation=interpolation, transpose=transpose, **kwargs)
         
-        self.model = torch.nn.Sequential(
-            DenseBlock(in_channels=in_channels, out_channels=amplify_factor, block_layers=2, kernel_size=1), 
-            submodule, 
-            ConvLayer(in_channels=amplify_factor, out_channels=out_channels)
-        )
+        self.add_module('in_layer', DenseBlock(in_channels=in_channels, out_channels=amplify_factor, block_layers=2, kernel_size=1))
+        self.add_module('submodule', submodule)
+        self.add_module('out_layer', ConvLayer(in_channels=amplify_factor, out_channels=out_channels))
 
-    def forward(self, input_data): 
-        return self.model(input_data)
-
-
-class d_unet_cuda(base_model):
-    
-    def __init__(self, loss=['l1'], optimizer=torch.optim.Adam, name=None, **kwargs):
-        
-        super().__init__(loss)
-        self.name = 'Dense_UNet' if name is None else name 
-        
-        model = d_unet(**kwargs)
-        
-        self.model = torch.nn.DataParallel(model).cuda()
-        self.optimizer = optimizer(self.model.parameters())
-        self.check_attrs()
-        
-    def forward(self): 
-        self.prediction = self.input_data - self.model.forward(self.input_data)
-        return self.prediction
