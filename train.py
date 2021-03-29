@@ -2,7 +2,6 @@ import data
 from packages import * 
 from configs import * 
 
-from loss import * 
 from models.networks import * 
 
 parser = argparse.ArgumentParser(description='templet train file')
@@ -15,7 +14,7 @@ parser.add_argument('--epoch_updates', type=int, default=100, help='allowed upda
 parser.add_argument('--batch_size', type=int, default=16, help='batch size when training')
 parser.add_argument('--fine_tune_last', type=bool, default=False, help='fine tune last model?')
 parser.add_argument('--model_pickle_path', type=str, default='', help='pickled model path, use with scheduler')
-parser.add_argument('--log_path', type=str, default='/home/michael/ssd_cache/SMART/train_logs', help='train logs location')
+parser.add_argument('--log_path', type=str, default='/home/michael/ssd_cache/lesion/train_logs', help='train logs location')
 parser.add_argument('--task_type', type=str, default='Segmentation', help='Task type in train_log_path folder')
 parser.add_argument('--GPU', type=str, default='0', help='specify which GPU to train on')
 parser.add_argument('--debug', type=bool, default=False, help='set to debug mode')
@@ -189,7 +188,7 @@ def train(rank, world_size, options):
 def main(): 
 
     if 'win' in sys.platform.lower():
-        options.log_path = 'C:/Users/Michael/Documents/SMART/train_logs'
+        options.log_path = 'C:/Users/Michael/Documents/lesion/train_logs'
     if options.debug: 
         torch.autograd.set_detect_anomaly(True)
         options.max_epoch = 5

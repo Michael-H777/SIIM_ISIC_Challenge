@@ -2,9 +2,8 @@ from packages import *
 
 from models.building_blocks import * 
 from models.conv_net import *
-from models.pix2pix import * 
-from models.unet import * 
 
+from models.networks import * 
 
 
 parser = argparse.ArgumentParser(description='templet train file')
@@ -26,22 +25,11 @@ options = parser.parse_args()
 options.DDP = False
 
 
-class dummy:
-    
-    def __len__(self):
-        return 20
-    
-    def __iter__(self):
-        for _ in range(10):
-            if random.randint(0, 2):
-                for _ in range(2):
-                    yield 3
-            else:
-                for _ in range(2):
-                    yield 2
-                
+shape = (128,128)
 
-test = dummy()
-for number in test:
-    print(number)
-    
+model = classification_cuda(options=options, input_shape=shape)
+data = torch.ones(16, 3, *shape)
+
+model.set_input(data)
+model.forward()
+

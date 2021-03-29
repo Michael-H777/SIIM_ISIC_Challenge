@@ -104,6 +104,12 @@ class base_model(ABC):
     def move_cpu(self, data):
         return data.detach().cpu().numpy()[0,0,:,:]
 
+    def move_model(self, model):
+        if self.DDP: 
+            return torch.nn.parallel.DistributedDataParallel(model.cuda())
+        else:
+            return torch.nn.DataParallel(model).cuda()
+
     def gather_loss(self, loss_type):
         record = self.train_loss if loss_type=='train' else self.test_loss 
         return self.compute_avg_loss(record)

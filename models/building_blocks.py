@@ -1,14 +1,9 @@
 import torch 
 import numpy as np 
 
-from loss.ssim import SSIM
-from loss.perceptual import * 
 
-
-loss_types = {'vgg': VGG, 
-              'l1': torch.nn.L1Loss, 
+loss_types = {'l1': torch.nn.L1Loss, 
               'l2': torch.nn.MSELoss, 
-              'ssim': SSIM, 
               'BCE': torch.nn.BCELoss, 
               'BCElogits': torch.nn.BCEWithLogitsLoss,
               'cross_entropy': torch.nn.CrossEntropyLoss}
@@ -46,8 +41,6 @@ class ChannelAttention(torch.nn.Module):
         super(ChannelAttention, self).__init__()
         
         self.attention = torch.nn.Sequential(
-            ConvLayer(in_channels=channels, out_channels=channels), 
-            ConvLayer(in_channels=channels, out_channels=channels, activation=None), 
             torch.nn.AdaptiveAvgPool2d(1), 
             torch.nn.Conv2d(channels, channels//reduction, kernel_size=1, padding=0, bias=True), 
             torch.nn.GELU(),
@@ -98,7 +91,7 @@ class ConvLayer(torch.nn.Sequential):
 class DenseBlock(torch.nn.Module): 
     
     def __init__(self, *, in_channels, out_channels, channel_growth=16,
-                 block_layers=3, block_attention=True, **kwargs):
+                 block_layers=4, block_attention=True, **kwargs):
         super(DenseBlock, self).__init__()
         
         self.conv = torch.nn.Sequential()
@@ -121,41 +114,3 @@ class DenseBlock(torch.nn.Module):
         new_step = new_step + self.attention(new_step) if self.attention is not None else new_step
         return new_step 
 
-
-class UNetLayer(torch.nn.Module):
-    
-    # idea from: https://github.com/junyanz/pytorch-CycleGAN-and-pix2pix/blob/master/models/networks.py
-    # native implementation 
-    
-    """Defines the Unet submodule with skip connection.
-        X -------------------identity----------------------
-        |-- downsampling -- |submodule| -- upsampling --|
-    """
-    
-    def __init__(self, *, channels, submodule, channel_growth=16, interpolation='bicubic', transpose=False, **kwargs):
-        
-        super(UNetLayer, self).__init__()
-        assert any([interpolation, transpose]) and not all([interpolation, transpose])
-        
-        center_channels = channels+channel_growth
-        up_method = torch.nn.Upsample(scale_factor=2, mode=interpolation, align_corners=True) if not transpose else \
-                    torch.nn.ConvTranspose2d(center_channels, center_channels // 2, kernel_size=2, stride=2)
-        
-        self.down = torch.nn.Sequential(
-            torch.nn.MaxPool2d(2), 
-            DenseBlock(in_channels=channels, out_channels=center_channels, **kwargs), 
-        )
-        
-        self.submodule = submodule 
-        
-        self.up = torch.nn.Sequential(
-            DenseBlock(in_channels=center_channels*2, out_channels=channels, **kwargs), 
-            up_method
-        )
-        
-    def forward(self, input_data):
-        skip_connection = self.down(input_data)
-        lower_layer = self.submodule(skip_connection)
-        result = self.up(torch.cat([skip_connection, lower_layer], dim=1))
-        return result
-    

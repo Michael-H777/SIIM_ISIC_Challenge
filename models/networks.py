@@ -2,78 +2,65 @@ import torch
 from models.base_class import * 
 from models.building_blocks import *
 
-from models.unet import * 
-from models.conv_net import * 
+from models.encoder_decoder import * 
 
 
-class conv_net_cuda(base_model):
-
-    def __init__(self, options, name=None, use_dense=False, **kwargs):
-        super().__init__(options)
-        
-        self.name = f'{"" if use_dense else "d_"}conv_net' if name is None else name
-        self.loss_names = ['l1']
-        loss = {'l1': loss_types['l1']().cuda()}
-        model = d_conv_net(**kwargs) if use_dense else conv_net(**kwargs)
-        model = torch.nn.DataParallel(model).cuda() if not self.DDP else torch.nn.parallel.DistributedDataParallel(model.cuda())
-        self.structure['conv_model'] = model_wrapper(options=options, model=model, loss=loss)
-        
-    def compute_loss(self):
-        loss = [loss(self.input_data, self.prediction) for loss in self.structure['conv_model'].loss.values()]
-        return loss 
-
-    def train(self, batch_index):
-        self.prediction = self.structure['conv_model'].forward(self.input_data)
-        loss = self.compute_loss()
-        total_loss = sum(loss) 
-        total_loss.backward()
-        
-        self.train_loss.append([item.detach() for item in loss])
-        if batch_index in self.update_at_batch:
-            self.structure['conv_model'].optimizer.step()
-            self.structure['conv_model'].optimizer.zero_grad()
-        return None 
-
-    def test(self):
-        self.prediction = self.structure['conv_model'].forward(self.input_data)
-        loss = self.compute_loss()
-        
-        self.test_loss.append([item.detach() for item in loss])
-        return self.move_cpu(self.input_data), self.move_cpu(self.prediction), self.move_cpu(self.target)
-
-
-class d_unet_cuda(base_model):
+class classification_cuda(base_model):
     
-    def __init__(self, options, name=None, **kwargs):
+    def __init__(self, *, options, input_shape, name=None): 
         
         super().__init__(options)
-        self.name = 'Dense_UNet' if name is None else name 
-        self.loss_names = ['l1']
-        loss = {'l1': loss_types['l1']().cuda()}
-        model = d_unet(**kwargs)
-        model = torch.nn.DataParallel(model).cuda() if not self.DDP else torch.nn.parallel.DistributedDataParallel(model.cuda())
-        self.structure['Dense_Unet'] = model_wrapper(options=options, model=model, loss=loss, name='D_UNet')         
+        self.name = 'Encoder-Decoder-Classifier' if name is None else name 
         
-    def compute_loss(self):
-        loss = [loss(self.input_data, self.prediction) for loss in self.structure['Dense_Unet'].loss.values()]
-        return loss 
-
-    def train(self, batch_index):
-        self.prediction = self.structure['Dense_Unet'].forward(self.input_data)
-        loss = self.compute_loss()
-        total_loss = sum(loss) 
-        total_loss.backward()
+        layers = 4
+        channel_growth = 4 # 8 won't work zzzz
         
-        self.train_loss.append([item.detach() for item in loss])
-        if batch_index in self.update_at_batch:
-            self.structure['Dense_Unet'].optimizer.step()
-            self.structure['Dense_Unet'].optimizer.zero_grad()
-        return None 
-
+        loss = {}
+        model = encoder(in_channels=3, layers=layers, channel_growth=channel_growth, group_norm=False)
+        skip_channels, bottom_channels = model.channels
+        model = self.move_model(model)
+        self.structure['encoder'] = model_wrapper(options=options, model=model, loss=loss, name='encoder')
+        
+        loss = {'l1': loss_types['l1'], 
+                'l2': loss_types['l2']}
+        model = decoder(out_channels=3, layers=layers, channel_growth=channel_growth, group_norm=False)
+        model = self.move_model(model)
+        self.structure['decoder'] = model_wrapper(options=options, model=model, loss=loss, name='decoder')
+        
+        loss = {'cross_entropy': loss_types['cross_entropy']}
+        skip_size = int(input_shape[0] * input_shape[1] / (4**(layers-1)) * skip_channels)
+        bottom_size = int(input_shape[0] * input_shape[1] / (4**layers) * bottom_channels)
+        print(f'{skip_channels=}, {bottom_channels=}, {skip_size=}, {bottom_size=}')
+        model = FC_classifier(input_size=skip_size+bottom_size, output_size=1, FC_layers=4)
+        model = self.move_model(model)
+        self.structure['classifier'] = model_wrapper(options=options, model=model, loss=loss, name='FC Classifier')
+        
+    def set_input(self, data):
+        self.input_data = data[:,0:3,:,:].cuda()
+        self.decode_target = data[:,-2:-1,:,:].cuda()
+        classify_target = data[:,-1:,:,:]
+        classify_target = torch.mean(classify_target, dim=[1,2,3])
+        self.classify_target = torch.unsqueeze(classify_target, dim=1).cuda()
+        
+    def classify(self):
+        skip, bottom = self.encode_result
+        result = [torch.flatten(tensor, start_dim=1) for tensor in [skip, bottom]]
+        result = torch.cat(result, dim=1)
+        self.classify_result = self.structure['classifier'].forward(result)
+        
+    def decode(self):
+        self.decode_result = self.structure['decoder'].forward(self.encode_result)
+    
+    def encode(self):
+        self.encode_result = self.structure['encoder'].forward(self.input_data)
+    
+    def forward(self): 
+        self.encode()
+        self.decode()
+        self.classify()
+        
+    def train(self):
+        pass 
+    
     def test(self):
-        self.prediction = self.structure['Dense_Unet'].forward(self.input_data)
-        loss = self.compute_loss()
-        
-        self.test_loss.append([item.detach() for item in loss])
-        return self.move_cpu(self.input_data), self.move_cpu(self.prediction), self.move_cpu(self.target)
-
+        pass

@@ -5,7 +5,7 @@ from models.building_blocks import *
 
 class conv_net(torch.nn.Sequential): 
     
-    def __init__(self, *, in_channels, out_channels, layers=5, channel_growth=16, name=None, **kwargs): 
+    def __init__(self, *, in_channels, out_channels, layers=5, channel_growth=16, **kwargs): 
         super().__init__()
         # make model 
         out_channels = out_channels if isinstance(out_channels, int) else channel_growth*(layers+1)
@@ -17,7 +17,7 @@ class conv_net(torch.nn.Sequential):
 
 class d_conv_net(torch.nn.Sequential):
     
-    def __init__(self, *, in_channels, out_channels, block_layers=5, channel_growth=16, name=None, **kwargs):
+    def __init__(self, *, in_channels, out_channels, block_layers=5, channel_growth=16, **kwargs):
         super().__init__(self)
         self.add_module('Amplify Conv', ConvLayer(in_channels=in_channels, out_channels=channel_growth, **kwargs))
         self.add_module('DenseBlock', DenseBlock(in_channels=channel_growth, out_channels=out_channels, 

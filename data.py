@@ -121,17 +121,7 @@ def create_h5_dataset(patches, name_header, h5file, augment_times=0, force_sourc
 
 
 def make_model_data():     
-    print('loading input data')
-    input_files = [tifffile.imread(f'{raw_data_folder}/{input_file_name}')]
-    print('loading target data')
-    target_file = tifffile.imread(f'{raw_data_folder}/{target_file_name}')
-
-    distribution_pointer = input_files + [target_file]
-    domain_min = min([np.ma.masked_equal(array, 0.0, copy=False).min() for array in distribution_pointer])
-    domain_max = max([np.ma.masked_equal(array, 0.0, copy=False).max() for array in distribution_pointer])
-
-    data_scaler = DataScaler(domain_min=domain_min, 
-                             domain_max=domain_max, 
+    data_scaler = DataScaler(domain_min=0, domain_max=255, 
                              target_min=0, target_max=1)
     
     with open(f'{processed_data_folder}/data_scaler.pickle', 'wb') as fileout:
