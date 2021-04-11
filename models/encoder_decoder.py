@@ -71,14 +71,24 @@ class FC_classifier(torch.nn.Sequential):
     
     def __init__(self, *, input_size, output_size, FC_layers):
         super().__init__()
-        
+        '''
+        original = input_size 
+        input_size = input_size // 3
         reduction = (input_size - output_size) // FC_layers
         fc_configs = [[layer, 
                        int(input_size-(reduction*layer)), 
                        int(input_size-(reduction*(layer+1)))] 
                       for layer in range(FC_layers)]
         
+        fc_configs.insert(0, ['reduce', original, input_size])
         fc_configs.append([FC_layers, fc_configs[-1][-1], output_size])
+        '''
+        
+        fc_configs = [[0, input_size, input_size//8], 
+                      [1, input_size//8, input_size//16], 
+                      [2, input_size//16, output_size]]
+        
         for layer_num, in_size, out_size in fc_configs:
             self.add_module(f'Layer {layer_num}', torch.nn.Linear(in_size, out_size))
+            self.add_module(f'Layer {layer_num} Activation', torch.nn.GELU()) if layer_num != 2 else None
 

@@ -108,7 +108,7 @@ def create_h5_dataset(patches, name_header, h5file, augment_times=0, force_sourc
     methods = [0] if force_source else []
 
     # if force_source, will guarantee original patch in h5file
-    for augment_type in methods + random.sample(range(1, 8), augment_times):
+    for augment_type in methods + random.sample(range(1, 14), augment_times):
         
         processed_data = np.zeros((len(patches), *patches[0].shape), dtype=np.float32)
         # do same augment on all index 
@@ -166,9 +166,9 @@ def make_model_data():
     negative = images.loc[images['target']==0].sample(n=positive.shape[0]*int(positive_augmnets*1.5))
     
     shape = positive.shape[0]
-    positive_train, positive_test = positive.iloc[:shape-10], positive.iloc[shape-10:]
+    positive_train, positive_test = positive.iloc[:shape-test_size], positive.iloc[shape-test_size:]
     shape = negative.shape[0] 
-    negative_train, negative_test = negative.iloc[:shape-10], negative.iloc[shape-10:]
+    negative_train, negative_test = negative.iloc[:shape-test_size*5], negative.iloc[shape-test_size*5:]
         
     train_table = pd.concat([positive_train, negative_train]).reset_index(drop=True)
     test_table = pd.concat([positive_test, negative_test]).reset_index(drop=True)
@@ -192,24 +192,61 @@ def augment_data(image, mode):
         # flip up and down
         out = np.flipud(image)
     elif mode == 2:
+        # flip up and down
+        out = np.flipud(image)
+        out = np.transpose(out)
+        
+    elif mode == 3:
         # rotate 90 degree
         out = np.rot90(image)
-    elif mode == 3:
+    elif mode == 4:
+        # rotate 90 degree
+        out = np.rot90(image)
+        out = np.transpose(out)
+        
+    elif mode == 5:
         # rotate 90 degree and flip up and down
         out = np.rot90(image)
         out = np.flipud(out)
-    elif mode == 4:
+    elif mode == 6:
+        # rotate 90 degree and flip up and down
+        out = np.rot90(image)
+        out = np.flipud(out)
+        out = np.transpose(out)
+        
+    elif mode == 7:
         # rotate 180 degree
         out = np.rot90(image, k=2)
-    elif mode == 5:
+    elif mode == 8:
+        # rotate 180 degree
+        out = np.rot90(image, k=2)
+        out = np.transpose(out)
+        
+    elif mode == 9:
         # rotate 180 degree and flip
         out = np.rot90(image, k=2)
         out = np.flipud(out)
-    elif mode == 6:
+    elif mode == 10:
+        # rotate 180 degree and flip
+        out = np.rot90(image, k=2)
+        out = np.flipud(out)
+        out = np.transpose(out)
+        
+    elif mode == 11:
         # rotate 270 degree
         out = np.rot90(image, k=3)
-    elif mode == 7:
+    elif mode == 12:
+        # rotate 270 degree
+        out = np.rot90(image, k=3)
+        out = np.transpose(out)
+        
+    elif mode == 13:
         # rotate 270 degree and flip
         out = np.rot90(image, k=3)
         out = np.flipud(out)
-    return np.transpose(out)
+    elif mode == 14:
+        # rotate 270 degree and flip
+        out = np.rot90(image, k=3)
+        out = np.flipud(out)
+        out = np.transpose(out)
+    return out

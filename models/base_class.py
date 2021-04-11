@@ -19,6 +19,7 @@ class model_wrapper:
         
         self.info = {'loss': [item.__class__.__name__ for item in self.loss.values()], 
                      'model': self.model.class_name,
+                     'size': f'{sum(param.numel() for param in self.model.parameters() if param.requires_grad):_}', 
                      'optimizer': self.optimizer.__class__.__name__, 
                      'scheduler': self.scheduler.__class__.__name__}
     
@@ -121,7 +122,7 @@ class base_model(ABC):
         return f'{sum(params):_}'
 
     def move_cpu(self, data):
-        return data[0,0].detach().cpu().numpy()
+        return data[0,0].detach().cpu().numpy().astype(np.float32)
 
     def move_model(self, model):
         if self.DDP: 
