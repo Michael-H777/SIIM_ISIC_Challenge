@@ -1,38 +1,39 @@
+import json 
 import torch 
 
-import json 
-from pprint import pformat
+import numpy as np 
 
 from abc import ABC, abstractmethod 
 
 
 class model_wrapper: 
     
-    def __init__(self, *, options, model, loss, name, optimizer=torch.optim.Adam, 
-                 scheduler=torch.optim.lr_scheduler.CosineAnnealingLR):
-        self.model_name = model.__class__.__name__ if name is None else name 
+    def __init__(self, *, options, model, loss, optimizer=torch.optim.Adam, 
+                 scheduler=torch.optim.lr_scheduler.OneCycleLR):
+        assert isinstance(loss, dict)
         self.loss = loss if loss else {}
         self.model = model 
         self.optimizer_class = optimizer 
         self.scheduler_class = scheduler 
-        self.update_scheduler(options)
+        self.update_scheduler(options, last_epoch=-1)
+        
+        self.info = {'loss': [item.__class__.__name__ for item in self.loss.values()], 
+                     'model': self.model.class_name,
+                     'optimizer': self.optimizer.__class__.__name__, 
+                     'scheduler': self.scheduler.__class__.__name__}
     
     def forward(self, data):
         return self.model.forward(data)
     
-    def update_scheduler(self, options):
-        self.optimizer = self.optimizer_class(self.model.parameters(), lr=options.start_lr)
-        self.scheduler = self.scheduler_class(self.optimizer, T_max=options.max_epoch, 
-                                              eta_min=options.end_lr)
+    def update_scheduler(self, options, last_epoch):
+        if last_epoch < 0:
+            last_epoch = -1 
+        else:
+            last_epoch=last_epoch*options.epoch_updates
+        self.optimizer = self.optimizer_class(self.model.parameters(), lr=options.max_lr)
+        self.scheduler = self.scheduler_class(self.optimizer, max_lr=options.max_lr, epochs=options.max_epoch, 
+                                              steps_per_epoch=options.epoch_updates, last_epoch=last_epoch)
         return None
-    
-    @property
-    def info(self):
-        info = {'loss': [item.__class__.__name__ for item in self.loss.values()], 
-                'model': self.model_name,
-                'optimizer': self.optimizer.__class__.__name__, 
-                'scheduler': self.scheduler.__class__.__name__}
-        return info
 
 
 class base_model(ABC): 
@@ -46,10 +47,12 @@ class base_model(ABC):
         pass 
 
     def __init__(self, options):
+        self.current_lr = options.max_lr
         self.update_rules(options)
         self.structure = {}
         self.test_loss = []
         self.train_loss = []
+        self.scaler = torch.cuda.amp.GradScaler()
 
     ########################################################################################
     # save and load checkpoint/inference
@@ -87,9 +90,25 @@ class base_model(ABC):
     # save and load checkpoint/inference
     ########################################################################################
     
+    def compile_image(self, patches):
+        # get gap dynamically to accomondate for 2d and 3d
+        shape = list(patches[0].shape)
+        shape[-1] = 20 
+        gap = np.zeros(tuple(shape))
+        
+        output = []
+        for index, patch in enumerate(patches, 1):
+            package = [patch, gap] if index != len(patches) else [patch]
+            output.extend(package)
+        
+        image = np.concatenate(output, axis=len(output[0].shape)-1)
+        image = np.float32(image)
+        return image
+        
     def compute_avg_loss(self, loss): 
         # this moves all the detached things from GPU to CPU
-        loss = [[column if isinstance(column, int) else column.cpu().numpy() for column in row] for row in loss]
+        loss = [[column if isinstance(column, (int, float)) else column.detach().cpu().numpy() for column in row] for row in loss]
+        
         # this turns [[row1, row1, ...], 
         #             [row2, row1, ...], 
         #             [row3, row1, ...], ...] 
@@ -102,13 +121,15 @@ class base_model(ABC):
         return f'{sum(params):_}'
 
     def move_cpu(self, data):
-        return data.detach().cpu().numpy()[0,0,:,:]
+        return data[0,0].detach().cpu().numpy()
 
     def move_model(self, model):
         if self.DDP: 
-            return torch.nn.parallel.DistributedDataParallel(model.cuda())
+            result = torch.nn.parallel.DistributedDataParallel(model.cuda())
         else:
-            return torch.nn.DataParallel(model).cuda()
+            result = torch.nn.DataParallel(model).cuda()
+        result.class_name = model.__class__.__name__
+        return result 
 
     def gather_loss(self, loss_type):
         record = self.train_loss if loss_type=='train' else self.test_loss 
@@ -122,8 +143,8 @@ class base_model(ABC):
         return model_wrapper.optimizer.param_groups[0]['lr'] 
     
     def set_input(self, data):
-        self.input_data = data[:,0:1,:,:].cuda(non_blocking=True) 
-        self.target = data[:,-1:,:,:].cuda(non_blocking=True)
+        self.input_data = data[:,0:1].cuda(non_blocking=True) 
+        self.target = data[:,-1:].cuda(non_blocking=True)
         return None 
 
     def set_requires_grad(self, model_wrapper, requires_grad):
@@ -132,6 +153,8 @@ class base_model(ABC):
         return None
 
     def set_to_train(self):
+        self.test_loss = []
+        self.train_loss = []
         [model_wrapper.model.train() for model_wrapper in self.structure.values()]
         return None
 
@@ -145,13 +168,13 @@ class base_model(ABC):
         self.update_at_batch = set(int(options.epoch_samples/options.batch_size/options.epoch_updates * step) for step in range(1, options.epoch_updates))
         return None 
 
-    def update_scheduler(self, options):
-        [model_wrapper.update_scheduler(options) for model_wrapper in self.structure.values()]
+    def update_scheduler(self, options, epoch):
+        [model_wrapper.update_scheduler(options, epoch-1) for model_wrapper in self.structure.values()]
         return None 
 
     def __repr__(self):
         info = {name:module.info for name, module in self.structure.items()}
-        return pformat(info, indent=0)
+        return json.dumps(info, indent=4)
     
     __str__ = __repr__ 
     

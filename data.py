@@ -110,7 +110,7 @@ def create_h5_dataset(patches, name_header, h5file, augment_times=0, force_sourc
     # if force_source, will guarantee original patch in h5file
     for augment_type in methods + random.sample(range(1, 8), augment_times):
         
-        processed_data = np.zeros((len(patches), *patches[0].shape))
+        processed_data = np.zeros((len(patches), *patches[0].shape), dtype=np.float32)
         # do same augment on all index 
         for image_index, image in enumerate(patches):
             processed_data[image_index,:,:] = augment_data(image.copy(), augment_type)
@@ -120,97 +120,69 @@ def create_h5_dataset(patches, name_header, h5file, augment_times=0, force_sourc
     return h5file
 
 
-def make_model_data():     
-    data_scaler = DataScaler(domain_min=0, domain_max=255, 
+def process_table(table, h5_file, data_scaler, augment_times, force_source): 
+    total_size = table.shape[0] 
+    for index, series in table.iterrows(): 
+        index += 1
+        series = series.to_dict()
+        image_name = series['image_name']
+        target = series['target']
+        print(f'\r[{index}/{total_size}], {image_name=}', end='', flush=True)
+        # do the things 
+        
+        image = pydicom.dcmread(f'{raw_data_folder}/2020_train/{image_name}.dcm')
+        image = cv2.resize(image.pixel_array, (patch_size, patch_size), interpolation=cv2.INTER_LANCZOS4)
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        
+        # fill package
+        blank = np.zeros((5, patch_size, patch_size))
+        blank[0] = image[:,:,0]
+        blank[1] = image[:,:,1]
+        blank[2] = image[:,:,2]
+        blank[3] = gray 
+        
+        input_data = [data_scaler.to_target(blank[index].copy()) for index in range(4)]
+        input_data += [np.ones((patch_size, patch_size)) * target]
+        
+        if target:
+            create_h5_dataset(input_data, image_name, h5_file, augment_times, force_source)
+        else:
+            create_h5_dataset(input_data, image_name, h5_file, 1, False)
+            
+    print()
+    h5_file.close() 
+    return None 
+
+
+def make_model_data():
+    
+    data_scaler = DataScaler(domain_min=0, 
+                             domain_max=255, 
                              target_min=0, target_max=1)
     
-    with open(f'{processed_data_folder}/data_scaler.pickle', 'wb') as fileout:
-        pickle.dump(data_scaler, fileout)
+    images = pd.read_csv(f'{raw_data_folder}/2020_label.csv')
     
-    all_index = list(range(250, 1800))
-    random.shuffle(all_index)
-    train_index, test_index = all_index[:train_size], all_index[-test_size:]
+    positive = images.loc[images['target']==1].sample(frac=1)
+    negative = images.loc[images['target']==0].sample(n=positive.shape[0]*int(positive_augmnets*1.5))
     
-    ################################################################
-    # labaled data processing 
-    un_labeled_h5 = h5py.File(f'{processed_data_folder}/labeled_train.h5', 'w')
-    for progress, image_index in enumerate(train_index, 1):
-        # have this report for each image slice processed 
-        used_patch = dropped_patch = 0 
-        scaled_images = [data_scaler.to_target(array[image_index,:,:]) for array in input_files]
+    shape = positive.shape[0]
+    positive_train, positive_test = positive.iloc[:shape-10], positive.iloc[shape-10:]
+    shape = negative.shape[0] 
+    negative_train, negative_test = negative.iloc[:shape-10], negative.iloc[shape-10:]
         
-        for row_num, row_index in enumerate(range(0, input_files[0].shape[1] - patch_size, stride)):
-            
-            for col_num, col_index in enumerate(range(0, input_files[0].shape[2] - patch_size, stride)):
-                
-                input_patch = [array[image_index , row_index:row_index+patch_size , col_index:col_index+patch_size].copy() for array in input_files]
-                
-                if np.any([array == 0 for array in input_patch]):
-                    dropped_patch += force_source + augment_times
-                    continue 
-                # now store them 
-                patches = [array[row_index:row_index+patch_size , col_index:col_index+patch_size].copy() for array in scaled_images]
-                patches += [data_scaler.to_target(target_file[image_index , row_index:row_index+patch_size , col_index:col_index+patch_size].copy())]
-                create_h5_dataset(patches=patches, name_header=f'{image_index}_{row_num}_{col_num}', h5file=un_labeled_h5, 
-                                  augment_times=augment_times, force_source=force_source)
-                used_patch += force_source + augment_times
-            # exited col_num for loop
-        # exited row_num for loop 
-        print(f'\r[{progress:>{len(str(train_size))}}/{train_size}] processed {image_index:>4}, valid patches {used_patch}, dropped {dropped_patch}', end='', flush=True)
-    # exited image_index for loop 
-    un_labeled_h5.close()
-    # labaled data processing 
-    ################################################################
+    train_table = pd.concat([positive_train, negative_train]).reset_index(drop=True)
+    test_table = pd.concat([positive_test, negative_test]).reset_index(drop=True)
     
-    '''
-    ################################################################
-    # implement semi-supervised learning data processing 
-    labeled_h5 = h5py.File(f'{processed_data_folder}/un_labeled_train.h5', 'w')
-    stride = 25
-    for progress, filename in enumerate(os.listdir(f'{raw_data_folder}/labeled_image'), 1):
-        labeled_image = tifffile.imread(f'{raw_data_folder}/labeled_image/{filename}')
-        image_index = int(filename[:filename.index('.')])
-        
-        used_patch = dropped_patch = 0 
-        scaled_images = [data_scaler.to_target(array[image_index,:,:]) for array in input_files]
-        for row_num, row_index in enumerate(range(0, input_files[0].shape[1] - patch_size, stride)):
-            
-            for col_num, col_index in enumerate(range(0, input_files[0].shape[2] - patch_size, stride)):
-                
-                input_patch = [array[image_index , row_index:row_index+patch_size , col_index:col_index+patch_size].copy() for array in input_files]
-                
-                if np.any([array == 0 for array in input_patch]):
-                    dropped_patch += force_source + augment_times
-                    continue 
-                # now store them 
-                patches = [array[row_index:row_index+patch_size , col_index:col_index+patch_size] for array in scaled_images]
-                patches += [labeled_image[row_index:row_index+patch_size , col_index:col_index+patch_size]]
-                
-                create_h5_dataset(patches=patches, name_header=f'{image_index}_{row_num}_{col_num}', h5file=labeled_h5, 
-                                  augment_times=7, force_source=True)
-                used_patch += force_source + augment_times
-        print(f'\r[{progress:>{len(os.listdir(f"{raw_data_folder}/labeled_image"))}}/{train_size}] ' + \
-              f'processed {image_index:>4}, valid patches {used_patch}, dropped {dropped_patch}', end='', flush=True)
+    labeled_h5 = h5py.File(f'{processed_data_folder}/labeled_train.h5', 'w')
+    process_table(train_table, labeled_h5, data_scaler, positive_augmnets, True)
 
-    labeled_h5.close()
-    # implement semi-supervised learning data processing     
-    ################################################################
-    '''
-    
     test_h5 = h5py.File(f'{processed_data_folder}/test_data.h5', 'w')
-    for image_index in test_index: 
-        
-        input_patch = [array[image_index , 144:656 , 144:656].copy() for array in input_files]
-        patches = input_patch + [target_file[image_index , 144:656 , 144:656].copy()]
-        patches = [data_scaler.to_target(array) for array in patches]
-        
-        create_h5_dataset(patches=patches, name_header=f'{image_index}', h5file=test_h5)
-    test_h5.close() 
+    process_table(test_table, test_h5, data_scaler, 0, True)
     
-    print('\ndata processing complete')
+    print('data processing complete')
     
-    return None
-
+    return None 
+        
 
 def augment_data(image, mode):
     # all rotation is counter clock wise 

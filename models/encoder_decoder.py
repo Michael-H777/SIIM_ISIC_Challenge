@@ -9,7 +9,7 @@ class encoder(torch.nn.Module):
         super().__init__()
         self.layers = ['Ampify 0']
         self.skip_layer = str(layers-1)
-        setattr(self, 'Ampify 0', ConvLayer(in_channels=in_channels, out_channels=channel_growth, kernel_size=1, **kwargs))
+        setattr(self, 'Ampify 0', ConvLayer2D(in_channels=in_channels, out_channels=channel_growth, kernel_size=1, **kwargs))
         self.channels = []
         for layer_num in range(1, layers+1): 
             block = DenseBlock(in_channels=layer_num*channel_growth, 
@@ -79,7 +79,6 @@ class FC_classifier(torch.nn.Sequential):
                       for layer in range(FC_layers)]
         
         fc_configs.append([FC_layers, fc_configs[-1][-1], output_size])
-        print(f'{fc_configs=}')
         for layer_num, in_size, out_size in fc_configs:
             self.add_module(f'Layer {layer_num}', torch.nn.Linear(in_size, out_size))
 
