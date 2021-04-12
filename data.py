@@ -163,13 +163,11 @@ def make_model_data():
     images = pd.read_csv(f'{raw_data_folder}/2020_label.csv')
     
     positive = images.loc[images['target']==1].sample(frac=1)
-    negative = images.loc[images['target']==0].sample(n=positive.shape[0]*int(positive_augmnets*1.5))
+    negative = images.loc[images['target']==0].sample(frac=1)
     
-    shape = positive.shape[0]
-    positive_train, positive_test = positive.iloc[:shape-test_size], positive.iloc[shape-test_size:]
-    shape = negative.shape[0] 
-    negative_train, negative_test = negative.iloc[:shape-test_size*5], negative.iloc[shape-test_size*5:]
-        
+    positive_train, positive_test = positive.iloc[:-test_size], positive.iloc[-test_size:]
+    negative_train, negative_test = negative.iloc[:-test_size*10], negative.iloc[-test_size*10:]
+    
     train_table = pd.concat([positive_train, negative_train]).reset_index(drop=True)
     test_table = pd.concat([positive_test, negative_test]).reset_index(drop=True)
     
@@ -177,12 +175,11 @@ def make_model_data():
     process_table(train_table, labeled_h5, data_scaler, positive_augmnets, True)
 
     test_h5 = h5py.File(f'{processed_data_folder}/test_data.h5', 'w')
-    process_table(test_table, test_h5, data_scaler, 0, True)
+    process_table(test_table, test_h5, data_scaler, 2, True)
     
     print('data processing complete')
-    
     return None 
-        
+    
 
 def augment_data(image, mode):
     # all rotation is counter clock wise 

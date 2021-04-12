@@ -16,7 +16,6 @@ parser.add_argument('--batch_size', type=int, default=8, help='batch size when t
 parser.add_argument('--fine_tune_last', type=bool, default=False, help='fine tune last model?')
 parser.add_argument('--model_pickle_path', type=str, default='', help='pickled model path, use with scheduler')
 parser.add_argument('--log_path', type=str, default='/home/michael/ssd_cache/SMART/train_logs', help='train logs location')
-parser.add_argument('--task_type', type=str, default='Classification', help='Task type in train_log_path folder')
 parser.add_argument('--GPU', type=str, default='0', help='specify which GPU to train on')
 parser.add_argument('--debug', type=bool, default=False, help='set to debug mode')
 options = parser.parse_args()
@@ -29,7 +28,6 @@ def train(rank, world_size, options):
     
     os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
     os.environ["CUDA_VISIBLE_DEVICES"] = str(rank)
-    options.log_path = f'{options.log_path}/{options.task_type}'
     
     if options.DDP:
         os.environ['MASTER_ADDR'] = 'localhost'
@@ -143,7 +141,7 @@ def train(rank, world_size, options):
                     epoch_test.append(result)
                     # flush image to disk 
                     tifffile.imwrite(f'{log_path}/test_images/epoch_{epoch_current}/{test_dataset.name}.tif', np.float32(image))
-                    
+            
             # we're done with doing test, write to log file 
             train_loss = [f'{value:.5f}' for value in model.gather_loss('train')]
             test_loss =  [f'{value:.5f}' for value in model.gather_loss('test', epoch_test)]

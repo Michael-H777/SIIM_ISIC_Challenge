@@ -1,9 +1,12 @@
 import torch 
 import numpy as np 
 
+from loss import SSIM, Perceptual
 
 loss_types = {'l1': torch.nn.L1Loss, 
               'l2': torch.nn.MSELoss, 
+              'ssim': SSIM, 
+              'perceptual': Perceptual, 
               'BCE': torch.nn.BCELoss, 
               'BCElogits': torch.nn.BCEWithLogitsLoss,
               'cross_entropy': torch.nn.CrossEntropyLoss}

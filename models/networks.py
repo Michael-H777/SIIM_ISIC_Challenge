@@ -14,21 +14,24 @@ class classification_cuda(base_model):
         super().__init__(options)
         self.name = self.__class__.__name__ if name is None else name 
         
-        layers = 4
-        channel_growth = 8 # 8 won't work zzzz
+        layers = 5
+        channel_growth = 32
         
-        model = encoder(in_channels=4, layers=layers, channel_growth=channel_growth, group_norm=None)
+        model = encoder(in_channels=4, layers=layers, channel_growth=channel_growth, block_layers=4)
         skip_channels, bottom_channels = model.channels
         model = self.move_model(model)
         self.structure['encoder'] = model_wrapper(options=options, model=model, loss={})
         
         loss = {'l1': loss_types['l1']().cuda(), 
-                'l2': loss_types['l2']().cuda()}
-        model = decoder(out_channels=4, layers=layers, channel_growth=channel_growth, group_norm=None)
-        model = self.move_model(model)
-        #self.structure['decoder'] = model_wrapper(options=options, model=model, loss=loss)
+                'l2': loss_types['l2']().cuda(), 
+                'ssim': loss_types['ssim']().cuda(), 
+                'perceptual': loss_types['perceptual']().cuda()}
         
-        loss = {'BCElogits': loss_types['BCElogits']().cuda()}
+        model = decoder(out_channels=4, layers=layers, channel_growth=channel_growth)
+        model = self.move_model(model)
+        self.structure['decoder'] = model_wrapper(options=options, model=model, loss=loss)
+        
+        loss = {'BCElogits': loss_types['BCElogits'](pos_weight=torch.Tensor([1, 3])).cuda()}
         skip_size = int(input_shape[0] * input_shape[1] / (4**(layers-1)) * skip_channels)
         bottom_size = int(input_shape[0] * input_shape[1] / (4**layers) * bottom_channels)
         #print(f'{skip_channels=}, {bottom_channels=}, {skip_size=}, {bottom_size=}')
@@ -36,7 +39,7 @@ class classification_cuda(base_model):
         model = self.move_model(model)
         self.structure['classifier'] = model_wrapper(options=options, model=model, loss=loss)
         
-        self.loss_names = ['BCElogits', 'Accuracy', 'F1', 'ROC_AUC']
+        self.loss_names = ['decoder_l1', 'decoder_l2', 'decoder_ssim', 'decoder_vgg', 'BCElogits', 'Accuracy', 'F1', 'ROC_AUC']
         self.eval_loss = [Accuracy(), F1(), Roc_Auc()]
         self.do_image = True 
         
@@ -64,72 +67,74 @@ class classification_cuda(base_model):
         return loss
         
     def train(self, batch_index):
-        '''
+        
         if self.do_image:
-            #with torch.cuda.amp.autocast():
-            self.encode()
-            self.decode()
+            with torch.cuda.amp.autocast():
+                self.encode()
+                self.decode()
 
-            loss = self.image_loss()
+                loss = self.image_loss()
                 
-            #self.scaler.scale(sum(loss)).backward() 
-            sum(loss).backward()
+            self.scaler.scale(sum(loss)).backward() 
+            #sum(loss).backward()
             
             if batch_index in self.update_at_batch:
-                #self.scaler.unscale_(self.structure['encoder'].optimizer)
-                #torch.nn.utils.clip_grad_norm_(self.structure['encoder'].model.parameters(), 1)
-                #self.scaler.step(self.structure['encoder'].optimizer)
-                self.structure['encoder'].optimizer.step()
+                self.scaler.unscale_(self.structure['encoder'].optimizer)
+                torch.nn.utils.clip_grad_norm_(self.structure['encoder'].model.parameters(), 1)
+                self.scaler.step(self.structure['encoder'].optimizer)
+                #self.structure['encoder'].optimizer.step()
                 self.structure['encoder'].optimizer.zero_grad()
             
-                #self.scaler.unscale_(self.structure['decoder'].optimizer)
-                #torch.nn.utils.clip_grad_norm_(self.structure['decoder'].model.parameters(), 1)
-                #self.scaler.step(self.structure['decoder'].optimizer)
-                self.structure['decoder'].optimizer.step()
+                self.scaler.unscale_(self.structure['decoder'].optimizer)
+                torch.nn.utils.clip_grad_norm_(self.structure['decoder'].model.parameters(), 1)
+                self.scaler.step(self.structure['decoder'].optimizer)
+                #self.structure['decoder'].optimizer.step()
                 self.structure['decoder'].optimizer.zero_grad()
-                #self.scaler.update() 
+                
+                self.scaler.update() 
                 self.current_lr = self.scheduler_step()
                 self.do_image = False 
             loss = loss + [0]
         else:
-            #with torch.cuda.amp.autocast():
-        '''
-        self.encode()
-        self.classify()
+        
+            with torch.cuda.amp.autocast():
+                
+                self.encode()
+                self.classify()
 
-        loss = self.classify_loss()
+                loss = self.classify_loss()
+                    
+            self.scaler.scale(sum(loss)).backward() 
+            #sum(loss).backward()
             
-        #self.scaler.scale(sum(loss)).backward() 
-        sum(loss).backward()
-        
-        if batch_index in self.update_at_batch:
-            #self.scaler.unscale_(self.structure['encoder'].optimizer)
-            #torch.nn.utils.clip_grad_norm_(self.structure['encoder'].model.parameters(), 1)
-            #self.scaler.step(self.structure['encoder'].optimizer)
-            torch.nn.utils.clip_grad_norm_(self.structure['encoder'].model.parameters(), 1)
-            self.structure['encoder'].optimizer.step()
-            self.structure['encoder'].optimizer.zero_grad()
-        
-            #self.scaler.unscale_(self.structure['classifier'].optimizer)
-            #torch.nn.utils.clip_grad_norm_(self.structure['classifier'].model.parameters(), 1)
-            #self.scaler.step(self.structure['classifier'].optimizer)
-            torch.nn.utils.clip_grad_norm_(self.structure['classifier'].model.parameters(), 1)
-            self.structure['classifier'].optimizer.step()
-            self.structure['classifier'].optimizer.zero_grad()
-            #self.scaler.update() 
-            self.current_lr = self.scheduler_step()
-            self.do_image = True 
+            if batch_index in self.update_at_batch:
+                self.scaler.unscale_(self.structure['encoder'].optimizer)
+                torch.nn.utils.clip_grad_norm_(self.structure['encoder'].model.parameters(), 1)
+                self.scaler.step(self.structure['encoder'].optimizer)
+                #self.structure['encoder'].optimizer.step()
+                self.structure['encoder'].optimizer.zero_grad()
+            
+                self.scaler.unscale_(self.structure['classifier'].optimizer)
+                torch.nn.utils.clip_grad_norm_(self.structure['classifier'].model.parameters(), 1)
+                self.scaler.step(self.structure['classifier'].optimizer)
+                #self.structure['classifier'].optimizer.step()
+                self.structure['classifier'].optimizer.zero_grad()
+                
+                self.scaler.update() 
+                self.current_lr = self.scheduler_step()
+                self.do_image = True 
+            loss = [0,0,0,0] + loss 
         self.train_loss.append(loss)
         return self.current_lr
     
     def test(self):         
-        #with torch.cuda.amp.autocast():
-        self.encode()
-        #self.decode()
-        self.classify()
+        with torch.cuda.amp.autocast():
+            self.encode()
+            self.decode()
+            self.classify()
         
         prediction = torch.nn.Sigmoid()(self.classify_result)
-        loss = self.classify_loss()
+        loss = self.image_loss() + self.classify_loss()
             
         result = [prediction.cpu().numpy().flatten()[0], self.classify_target.cpu().numpy().flatten()[0]]
         self.test_loss.append(loss)
