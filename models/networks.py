@@ -24,14 +24,13 @@ class classification_cuda(base_model):
         
         loss = {'l1': loss_types['l1']().cuda(), 
                 'l2': loss_types['l2']().cuda(), 
-                'ssim': loss_types['ssim']().cuda(), 
-                'perceptual': loss_types['perceptual']().cuda()}
+                'ssim': loss_types['ssim']().cuda()}
         
         model = decoder(out_channels=4, layers=layers, channel_growth=channel_growth)
         model = self.move_model(model)
         self.structure['decoder'] = model_wrapper(options=options, model=model, loss=loss)
         
-        loss = {'BCElogits': loss_types['BCElogits'](pos_weight=torch.Tensor([1, 3])).cuda()}
+        loss = {'BCElogits': loss_types['BCElogits']().cuda()}
         skip_size = int(input_shape[0] * input_shape[1] / (4**(layers-1)) * skip_channels)
         bottom_size = int(input_shape[0] * input_shape[1] / (4**layers) * bottom_channels)
         #print(f'{skip_channels=}, {bottom_channels=}, {skip_size=}, {bottom_size=}')
@@ -39,7 +38,7 @@ class classification_cuda(base_model):
         model = self.move_model(model)
         self.structure['classifier'] = model_wrapper(options=options, model=model, loss=loss)
         
-        self.loss_names = ['decoder_l1', 'decoder_l2', 'decoder_ssim', 'decoder_vgg', 'BCElogits', 'Accuracy', 'F1', 'ROC_AUC']
+        self.loss_names = ['decoder_l1', 'decoder_l2', 'decoder_ssim', 'BCElogits', 'Accuracy', 'F1', 'ROC_AUC']
         self.eval_loss = [Accuracy(), F1(), Roc_Auc()]
         self.do_image = True 
         
@@ -59,7 +58,7 @@ class classification_cuda(base_model):
         return None 
         
     def image_loss(self):
-        loss = [function(self.decode_result, self.decode_target) for function in self.structure['decoder'].loss.values()]
+        loss = [function(self.decode_result, self.decode_target) for function in self.structure['decoder'].loss.values()]        
         return loss 
     
     def classify_loss(self):
@@ -95,8 +94,7 @@ class classification_cuda(base_model):
                 self.current_lr = self.scheduler_step()
                 self.do_image = False 
             loss = loss + [0]
-        else:
-        
+        else:        
             with torch.cuda.amp.autocast():
                 
                 self.encode()
@@ -123,7 +121,7 @@ class classification_cuda(base_model):
                 self.scaler.update() 
                 self.current_lr = self.scheduler_step()
                 self.do_image = True 
-            loss = [0,0,0,0] + loss 
+            loss = [0,0,0] + loss 
         self.train_loss.append(loss)
         return self.current_lr
     
@@ -136,18 +134,18 @@ class classification_cuda(base_model):
         prediction = torch.nn.Sigmoid()(self.classify_result)
         loss = self.image_loss() + self.classify_loss()
             
-        result = [prediction.cpu().numpy().flatten()[0], self.classify_target.cpu().numpy().flatten()[0]]
         self.test_loss.append(loss)
         
-        gray = self.input_data[:,-1:]
-        prediction = torch.ones(gray.shape) * prediction.cpu() 
-        target = torch.ones(gray.shape) * self.classify_target.cpu()
+        prediction = prediction.cpu().numpy().flatten()[0]
+        target = self.classify_target.cpu().numpy().flatten()[0]
 
-        images = [self.move_cpu(gray), 
-                  self.move_cpu(prediction), 
-                  self.move_cpu(target)]
-        
-        return result, images
+        images = [] 
+        for image in [self.input_data, self.decode_result]:
+            result = np.zeros((*image.shape[-2:], 1))
+            result[:,:,0] = image[0,-1,:,:].cpu().numpy() * 255
+            images.append(result.copy().astype(int))
+        images = np.concatenate(images, axis=1)
+        return prediction, target, np.clip(images, 0, 255)
 
     def set_input(self, data):
         # batch * (R,G,B,Gray,Label) * H * W

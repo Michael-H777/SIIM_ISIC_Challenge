@@ -65,8 +65,8 @@ class decoder(torch.nn.Module):
             else:
                 bottom = layer(bottom)
         return bottom 
-            
-            
+        
+        
 class FC_classifier(torch.nn.Sequential): 
     
     def __init__(self, *, input_size, output_size, FC_layers):
@@ -74,9 +74,41 @@ class FC_classifier(torch.nn.Sequential):
         
         print(f'{self.__class__.__name__} {input_size=}')
         fc_configs = [[0, input_size, input_size//128], 
+                      [1, input_size//128, input_size//128], 
                       ['Exit', input_size//128, output_size]]
         
         for layer_num, in_size, out_size in fc_configs:
             self.add_module(f'Layer {layer_num}', torch.nn.Linear(in_size, out_size))
+            self.add_module(f'Layer {layer_num} dropout', torch.nn.Dropout(0.2))
             self.add_module(f'Layer {layer_num} Activation', torch.nn.LeakyReLU(0.2)) if layer_num != 'Exit' else None
 
+
+class Patch_classifier(torch.nn.Module): 
+    
+    def __init__(self, *, skip_channels, bottom_channels, bottom_size, **kwargs):
+        super().__init__() 
+        
+        layers = bottom_size // 2 
+        
+        self.skip_module = torch.nn.Sequential(Conv2dUp(channels=skip_channels))
+        
+        self.classify_module = torch.nn.Sequential()
+
+        channels = skip_channels+bottom_channels
+        for index in range(layers):            
+            up = Conv2dUp(channels=channels)
+            dense = DenseBlock(in_channels=channels, out_channels=channels)
+            
+            self.classify_module.add_module(f'Layer {index} Up', up)
+            self.classify_module.add_module(f'Layer {index} DenseBlock', dense)
+        
+    def forward(self, input_data): 
+        skip, bottom = input_data
+        
+        skip = self.skip_module(skip)
+        bottom = torch.cat([bottom, skip], 1)
+        
+        for layer in self.classify_module:
+            bottom = layer(bottom)
+            
+        return bottom

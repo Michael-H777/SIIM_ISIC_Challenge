@@ -1,5 +1,9 @@
 import torch 
 import torchvision
+import torch.nn.functional as F
+from torch.autograd import Variable
+import numpy as np
+from math import exp
 
 from sklearn.metrics import accuracy_score, f1_score, roc_auc_score
 
@@ -60,7 +64,7 @@ class SSIM(torch.nn.Module):
         super(SSIM, self).__init__()
         self.window_size = window_size
         self.size_average = size_average
-        self.channel = 1
+        self.channel = 4
         self.window = create_window(window_size, self.channel)
 
     def forward(self, img1, img2):

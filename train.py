@@ -12,10 +12,10 @@ parser.add_argument('--min_lr', type=float, default=1e-3, help='ending learning 
 parser.add_argument('--max_epoch', type=int, default=50, help='maximum epoch for training')
 parser.add_argument('--epoch_samples', type=int, default=5_000, help='samples for each epochs')
 parser.add_argument('--epoch_updates', type=int, default=100, help='allowed updates for each epochs')
-parser.add_argument('--batch_size', type=int, default=8, help='batch size when training')
+parser.add_argument('--batch_size', type=int, default=4, help='batch size when training')
 parser.add_argument('--fine_tune_last', type=bool, default=False, help='fine tune last model?')
 parser.add_argument('--model_pickle_path', type=str, default='', help='pickled model path, use with scheduler')
-parser.add_argument('--log_path', type=str, default='/home/michael/ssd_cache/SMART/train_logs', help='train logs location')
+parser.add_argument('--log_path', type=str, default='/home/michael/ssd_cache/Lesion/train_logs', help='train logs location')
 parser.add_argument('--GPU', type=str, default='0', help='specify which GPU to train on')
 parser.add_argument('--debug', type=bool, default=False, help='set to debug mode')
 options = parser.parse_args()
@@ -42,7 +42,7 @@ def train(rank, world_size, options):
     train_labaled_sampler = torch.utils.data.RandomSampler(train_labaled_dataset, replacement=True, num_samples=options.epoch_samples)
     train_labaled_loader = data.FastDataLoader(dataset=train_labaled_dataset, batch_size=options.batch_size,
                                                sampler=train_labaled_sampler, num_workers=4, pin_memory=True, drop_last=True, 
-                                               prefetch_factor=4, persistent_workers=False)
+                                               prefetch_factor=8, persistent_workers=False)
     
     train_dataset = train_labaled_dataset
     train_loader = train_labaled_loader
@@ -136,11 +136,11 @@ def train(rank, world_size, options):
                     model.set_input(input_data)
                     
                     # prep the data
-                    result, image = model.test()
+                    prediction, target, images = model.test()
                     
-                    epoch_test.append(result)
+                    epoch_test.append([prediction, target])
                     # flush image to disk 
-                    tifffile.imwrite(f'{log_path}/test_images/epoch_{epoch_current}/{test_dataset.name}.tif', np.float32(image))
+                    cv2.imwrite(f'{log_path}/test_images/epoch_{epoch_current}/T{target:.0f}_P{prediction:.2f}_{test_dataset.name}.jpg', images)
             
             # we're done with doing test, write to log file 
             train_loss = [f'{value:.5f}' for value in model.gather_loss('train')]
@@ -157,7 +157,7 @@ def train(rank, world_size, options):
             epoch_df = pd.DataFrame(columns=model.loss_names, data=[train_loss, test_loss])
             epoch_df.index = ['train', 'test']
             time_used = datetime.now() - start_time
-            time_str = f'epoch time: {time_used.seconds // 60 :>02}:{time_used.seconds % 60:>02}'
+            time_str = f'epoch time: {time_used.seconds // 60 :>02}:{time_used.seconds % 60 :>02}'
             print(time_str, epoch_df.to_string(), sep='\n')
         
         # exit validation phase  
@@ -177,7 +177,7 @@ if __name__ == '__main__':
         data.make_model_data() 
 
     if 'win' in sys.platform.lower():
-        options.log_path = 'D:/Data/Lesion/train_logs'
+        options.log_path = 'Z:/Data/Lesion/train_logs'
     
     if options.debug: 
         torch.autograd.set_detect_anomaly(True)
