@@ -11,7 +11,7 @@ from sklearn.metrics import accuracy_score, f1_score, roc_auc_score
 class Accuracy:
     
     def __call__(self, prediction, target):
-        prediction = [round(item) for item in prediction]
+        prediction = [round(item) if item is not np.nan else -1 for item in prediction]
         return accuracy_score(target, prediction) 
     
 class F1:

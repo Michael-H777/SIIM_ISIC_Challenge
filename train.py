@@ -127,20 +127,22 @@ def train(rank, world_size, options):
         
         # exit training, do test 
         if is_first:
-            os.mkdir(f'{log_path}/test_images/epoch_{epoch_current}')
             model.set_to_test()
-            epoch_test = [] 
+            epoch_test = []
+            validation = []
             with torch.no_grad(): 
                 for image_index, input_data in enumerate(test_dataset): 
                     input_data = torch.unsqueeze(input_data, 0)
                     model.set_input(input_data)
                     
                     # prep the data
-                    prediction, target, images = model.test()
+                    prediction, target = model.test()
                     
+                    validation.append([test_dataset.name, round(prediction, 2), target])
                     epoch_test.append([prediction, target])
-                    # flush image to disk 
-                    cv2.imwrite(f'{log_path}/test_images/epoch_{epoch_current}/T{target:.0f}_P{prediction:.2f}_{test_dataset.name}.jpg', images)
+            
+            validation = pd.DataFrame(columns=['name', 'prediction', 'target'], data=validation)
+            validation.to_csv(f'{log_path}/test_images/epoch_{epoch_current}.csv', index=False)
             
             # we're done with doing test, write to log file 
             train_loss = [f'{value:.5f}' for value in model.gather_loss('train')]

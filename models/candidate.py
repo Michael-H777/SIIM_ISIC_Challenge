@@ -41,20 +41,17 @@ class templet(base_model):
 
                 loss = self.image_loss()
                 
-            self.scaler.scale(sum(loss)).backward() 
-            #sum(loss).backward()
+            self.scaler.scale(sum(loss)).backward()
             
             if batch_index in self.update_at_batch:
                 self.scaler.unscale_(self.structure['encoder'].optimizer)
                 torch.nn.utils.clip_grad_norm_(self.structure['encoder'].model.parameters(), 1)
                 self.scaler.step(self.structure['encoder'].optimizer)
-                #self.structure['encoder'].optimizer.step()
                 self.structure['encoder'].optimizer.zero_grad()
             
                 self.scaler.unscale_(self.structure['decoder'].optimizer)
                 torch.nn.utils.clip_grad_norm_(self.structure['decoder'].model.parameters(), 1)
                 self.scaler.step(self.structure['decoder'].optimizer)
-                #self.structure['decoder'].optimizer.step()
                 self.structure['decoder'].optimizer.zero_grad()
                 
                 self.scaler.update() 
@@ -69,20 +66,17 @@ class templet(base_model):
 
                 loss = self.classify_loss()
                     
-            self.scaler.scale(sum(loss)).backward() 
-            #sum(loss).backward()
+            self.scaler.scale(sum(loss)).backward()
             
             if batch_index in self.update_at_batch:
                 self.scaler.unscale_(self.structure['encoder'].optimizer)
                 torch.nn.utils.clip_grad_norm_(self.structure['encoder'].model.parameters(), 1)
                 self.scaler.step(self.structure['encoder'].optimizer)
-                #self.structure['encoder'].optimizer.step()
                 self.structure['encoder'].optimizer.zero_grad()
             
                 self.scaler.unscale_(self.structure['classifier'].optimizer)
                 torch.nn.utils.clip_grad_norm_(self.structure['classifier'].model.parameters(), 1)
                 self.scaler.step(self.structure['classifier'].optimizer)
-                #self.structure['classifier'].optimizer.step()
                 self.structure['classifier'].optimizer.zero_grad()
                 
                 self.scaler.update() 
@@ -106,13 +100,7 @@ class templet(base_model):
         prediction = prediction.cpu().numpy().flatten()[0]
         target = self.classify_target.cpu().numpy().flatten()[0]
 
-        images = [] 
-        for image in [self.input_data, self.decode_result]:
-            result = np.zeros((*image.shape[-2:], 1))
-            result[:,:,0] = image[0,-1,:,:].cpu().numpy() * 255
-            images.append(result.copy().astype(int))
-        images = np.concatenate(images, axis=1)
-        return prediction, target, np.clip(images, 0, 255)
+        return prediction, target
 
     def set_input(self, data):
         # batch * (R,G,B,Gray,Label) * H * W

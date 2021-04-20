@@ -128,8 +128,8 @@ def process_table(table, h5_file, data_scaler, augment_times, force_source):
         image_name = series['image_name']
         target = series['target']
         print(f'\r[{index}/{total_size}], {image_name=}', end='', flush=True)
-        # do the things 
         
+        # do the things
         image = pydicom.dcmread(f'{raw_data_folder}/2020_train/{image_name}.dcm')
         image = cv2.resize(image.pixel_array, (patch_size, patch_size), interpolation=cv2.INTER_LANCZOS4)
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
