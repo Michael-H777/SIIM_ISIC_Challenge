@@ -12,8 +12,8 @@ if 'linux' in platform.lower():
     raw_data_folder = '/home/michael/ssd_cache/Lesion/raw_data'
     processed_data_folder = '/home/michael/ssd_cache/Lesion/processed_data'
 else:
-    raw_data_folder = 'Y:/SSD/Lesion/raw_data'
-    processed_data_folder = 'Y:/SSD/Lesion/processed_data'
+    raw_data_folder = 'E:/Lesion/raw_data'
+    processed_data_folder = 'E:/Lesion/processed_data'
 
 # reporting config 
 line_width = 90

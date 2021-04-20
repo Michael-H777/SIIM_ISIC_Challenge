@@ -14,7 +14,7 @@ class encoder(torch.nn.Module):
         for layer_num in range(1, layers+1): 
             block = DenseBlock(in_channels=layer_num*channel_growth, 
                                out_channels=(layer_num+1)*channel_growth, **kwargs)
-            pool = torch.nn.MaxPool2d(2)
+            pool = Conv2dDown(channels=(layer_num+1)*channel_growth)
             setattr(self, f'Layer {layer_num} Dense', block)
             setattr(self, f'Layer {layer_num} Pool', pool)
             self.layers.extend([f'Layer {layer_num} Dense', f'Layer {layer_num} Pool'])
@@ -96,11 +96,12 @@ class Patch_classifier(torch.nn.Module):
 
         channels = skip_channels+bottom_channels
         for index in range(layers):            
-            up = Conv2dUp(channels=channels)
+            up = Conv2dDown(channels=channels)
             dense = DenseBlock(in_channels=channels, out_channels=channels)
             
             self.classify_module.add_module(f'Layer {index} Up', up)
             self.classify_module.add_module(f'Layer {index} DenseBlock', dense)
+            channels //= 2 
         
     def forward(self, input_data): 
         skip, bottom = input_data

@@ -59,7 +59,7 @@ class DataSet(torch.utils.data.Dataset):
         with h5py.File(f'{processed_data_folder}/{self.filename}', 'r') as filein: 
             self.names = list(filein.keys())
         random.shuffle(self.names)
-            
+        
     def __len__(self):
         return len(self.names)
         
@@ -173,7 +173,7 @@ def make_model_data():
     
     labeled_h5 = h5py.File(f'{processed_data_folder}/labeled_train.h5', 'w')
     process_table(train_table, labeled_h5, data_scaler, positive_augmnets, True)
-
+    
     test_h5 = h5py.File(f'{processed_data_folder}/test_data.h5', 'w')
     process_table(test_table, test_h5, data_scaler, 2, True)
     
@@ -247,3 +247,8 @@ def augment_data(image, mode):
         out = np.flipud(out)
         out = np.transpose(out)
     return out
+
+
+if __name__ == '__main__':
+    make_model_data() 
+    

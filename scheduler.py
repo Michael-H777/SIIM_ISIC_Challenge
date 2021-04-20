@@ -12,7 +12,7 @@ parser.add_argument('--min_lr', type=float, default=1e-3, help='ending learning 
 parser.add_argument('--max_epoch', type=int, default=50, help='maximum epoch for training')
 parser.add_argument('--epoch_samples', type=int, default=5_000, help='samples for each epochs')
 parser.add_argument('--epoch_updates', type=int, default=100, help='allowed updates for each epochs')
-parser.add_argument('--batch_size', type=int, default=8, help='batch size when training')
+parser.add_argument('--batch_size', type=int, default=4, help='batch size when training')
 parser.add_argument('--fine_tune_last', type=bool, default=False, help='fine tune last model?')
 parser.add_argument('--model_pickle_path', type=str, default='', help='pickled model path, use with scheduler')
 parser.add_argument('--log_path', type=str, default='/home/michael/ssd_cache/SMART/train_logs', help='train logs location')
@@ -31,7 +31,7 @@ def dump_pickle(model, path):
 def main():
 
     if 'win' in sys.platform.lower():
-        options.log_path = 'D:/Data/SMART/train_logs'
+        options.log_path = 'Z:/Data/Lesion/train_logs'
     if options.debug: 
         torch.autograd.set_detect_anomaly(True)
         options.max_epoch = 2
@@ -47,16 +47,16 @@ def main():
     else:
         options.DDP = False
 
-    from models.candidate import segnet_fast, unet_fast, d_unet_fast, segnet_hq, unet_hq, d_unet_hq, xl_d_unet_hq, xl_d_unet_fast
-    to_train = [xl_d_unet_hq, xl_d_unet_fast, d_unet_fast, unet_fast, unet_hq, ]
+    from models.candidate import l1_l2_classification, l1_l2_ssim_classification, l1_l2_ssim_vgg_classification
+    to_train = [l1_l2_classification, l1_l2_ssim_classification, l1_l2_ssim_vgg_classification]
     
     line_gap = '-' * line_width
     for index, model_class in enumerate(to_train, 1):
         option_used = deepcopy(options)
         
         option_used.schedule = f'[{index}/{len(to_train)}]'
-        model = model_class(options=option_used)
-        path = f'D:/Data/SMART/schedule/{model.__class__.__name__}.pickle'
+        model = model_class(options=option_used, input_shape=(patch_size, patch_size))
+        path = f'Z:/Data/Lesion/schedule/{model.__class__.__name__}.pickle'
         dump_pickle(model, path)
         option_used.model_pickle_path = path 
         
@@ -72,10 +72,5 @@ if __name__ == '__main__':
     
     if options.preprocess:
         data.make_model_data_on_stack() 
-    
-    if not os.path.isdir('D:/Data/SMART/schedule/'):
-        os.mkdir('D:/Data/SMART/schedule/')
         
-    name = 'ISIC_0052212'
-    
-    pydicom
+    main()

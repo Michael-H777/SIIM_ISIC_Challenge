@@ -156,6 +156,14 @@ class ConvLayer3D(torch.nn.Sequential):
         return input_data
     
     
+class Conv2dDown(torch.nn.Sequential):
+    
+    def __init__(self, channels, **kwargs):
+        super().__init__()        
+        self.add_module('Conv K4S2 Up', ConvLayer2D(in_channels=channels, out_channels=channels, 
+                                                    kernel_size=4, stride=2, padding=1, **kwargs))
+    
+    
 class DenseBlock(torch.nn.Module): 
     
     def __init__(self, *, in_channels, out_channels, channel_growth=16,
@@ -235,11 +243,3 @@ class UNetLayer(torch.nn.Module):
         result = self.up(torch.cat([skip_connection, lower_layer], dim=1))
         return result
     
-    
-class Conv2dUp(torch.nn.Sequential):
-    
-    def __init__(self, channels):
-        
-        self.add_module('Conv K4S2 Up', ConvLayer2D(in_channels=channels, out_channels=channels, kernel_size=4, stride=2, padding=0))
-        
-        
