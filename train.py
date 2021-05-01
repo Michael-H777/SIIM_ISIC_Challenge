@@ -3,7 +3,8 @@ from packages import *
 from configs import * 
 
 from loss import * 
-from models.networks import * 
+from models.networks import *
+from models.candidate import l1_l2_ssim_vgg_classification
 
 parser = argparse.ArgumentParser(description='train file')
 parser.add_argument('--preprocess', type=bool, default=False, help='process training data using specified directory')
@@ -19,7 +20,6 @@ parser.add_argument('--log_path', type=str, default='/home/michael/ssd_cache/Les
 parser.add_argument('--GPU', type=str, default='0', help='specify which GPU to train on')
 parser.add_argument('--debug', type=bool, default=False, help='set to debug mode')
 options = parser.parse_args()
-
 
 
 def train(rank, world_size, options): 
@@ -41,7 +41,7 @@ def train(rank, world_size, options):
     train_labaled_dataset = data.DataSet(source_file_name='labeled_train.h5')
     train_labaled_sampler = torch.utils.data.RandomSampler(train_labaled_dataset, replacement=True, num_samples=options.epoch_samples)
     train_labaled_loader = data.FastDataLoader(dataset=train_labaled_dataset, batch_size=options.batch_size,
-                                               sampler=train_labaled_sampler, num_workers=4, pin_memory=True, drop_last=True, 
+                                               sampler=train_labaled_sampler, num_workers=6, pin_memory=True, drop_last=True, 
                                                prefetch_factor=8, persistent_workers=False)
     
     train_dataset = train_labaled_dataset
@@ -69,7 +69,7 @@ def train(rank, world_size, options):
             model = pickle.load(filein)
         epoch_start = 0
     else:
-        model = classification_cuda(options=options, input_shape=(patch_size, patch_size))
+        model = l1_l2_ssim_vgg_classification(options=options, input_shape=(patch_size, patch_size))
         epoch_start = 0 
         
     model.update_rules(options)
@@ -138,7 +138,7 @@ def train(rank, world_size, options):
                     # prep the data
                     prediction, target = model.test()
                     
-                    validation.append([test_dataset.name, round(prediction, 2), target])
+                    validation.append([test_dataset.name, prediction, target])
                     epoch_test.append([prediction, target])
             
             validation = pd.DataFrame(columns=['name', 'prediction', 'target'], data=validation)

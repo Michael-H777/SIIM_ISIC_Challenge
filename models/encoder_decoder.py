@@ -32,7 +32,7 @@ class encoder(torch.nn.Module):
                 
         return skip, input_data
     
-
+    
 class decoder(torch.nn.Module):
     
     def __init__(self, *, out_channels, layers, channel_growth, **kwargs):
@@ -79,7 +79,7 @@ class FC_classifier(torch.nn.Sequential):
         
         for layer_num, in_size, out_size in fc_configs:
             self.add_module(f'Layer {layer_num}', torch.nn.Linear(in_size, out_size))
-            self.add_module(f'Layer {layer_num} dropout', torch.nn.Dropout(0.2))
+            #self.add_module(f'Layer {layer_num} dropout', torch.nn.Dropout(0.2)) if layer_num != 'Exit' else None
             self.add_module(f'Layer {layer_num} Activation', torch.nn.LeakyReLU(0.2)) if layer_num != 'Exit' else None
 
 
@@ -113,3 +113,4 @@ class Patch_classifier(torch.nn.Module):
             bottom = layer(bottom)
             
         return bottom
+    

@@ -47,8 +47,8 @@ def main():
     else:
         options.DDP = False
 
-    from models.candidate import l1_l2_classification, l1_l2_ssim_classification, l1_l2_ssim_vgg_classification
-    to_train = [l1_l2_classification, l1_l2_ssim_classification, l1_l2_ssim_vgg_classification]
+    from models.candidate import l1_l2_classification
+    to_train = [l1_l2_classification]
     
     line_gap = '-' * line_width
     for index, model_class in enumerate(to_train, 1):
